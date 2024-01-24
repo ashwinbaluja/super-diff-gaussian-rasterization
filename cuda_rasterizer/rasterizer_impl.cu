@@ -160,6 +160,7 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 	obtain(chunk, geom.internal_radii, P, 128);
 	obtain(chunk, geom.means2D, P, 128);
 	obtain(chunk, geom.cov3D, P * 6, 128);
+	obtain(chunk, geom.shape, P, 128);
 	obtain(chunk, geom.conic_opacity, P, 128);
 	obtain(chunk, geom.rgb, P * 3, 128);
 	obtain(chunk, geom.tiles_touched, P, 128);
@@ -205,6 +206,7 @@ int CudaRasterizer::Rasterizer::forward(
 	const float* means3D,
 	const float* shs,
 	const float* colors_precomp,
+	const float* shapes,
 	const float* opacities,
 	const float* scales,
 	const float scale_modifier,
@@ -251,6 +253,7 @@ int CudaRasterizer::Rasterizer::forward(
 		(glm::vec3*)scales,
 		scale_modifier,
 		(glm::vec4*)rotations,
+		shapes,
 		opacities,
 		shs,
 		geomState.clamped,
@@ -266,6 +269,7 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.depths,
 		geomState.cov3D,
 		geomState.rgb,
+		geomState.shape,
 		geomState.conic_opacity,
 		tile_grid,
 		geomState.tiles_touched,
@@ -326,6 +330,7 @@ int CudaRasterizer::Rasterizer::forward(
 		width, height,
 		geomState.means2D,
 		feature_ptr,
+		geomState.shape,
 		geomState.conic_opacity,
 		imgState.accum_alpha,
 		imgState.n_contrib,
@@ -359,6 +364,7 @@ void CudaRasterizer::Rasterizer::backward(
 	const float* dL_dpix,
 	float* dL_dmean2D,
 	float* dL_dconic,
+	float* dL_dshape,
 	float* dL_dopacity,
 	float* dL_dcolor,
 	float* dL_dmean3D,
@@ -395,6 +401,7 @@ void CudaRasterizer::Rasterizer::backward(
 		width, height,
 		background,
 		geomState.means2D,
+		geomState.shape,
 		geomState.conic_opacity,
 		color_ptr,
 		imgState.accum_alpha,
@@ -402,6 +409,7 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dpix,
 		(float3*)dL_dmean2D,
 		(float4*)dL_dconic,
+		dL_dshape,
 		dL_dopacity,
 		dL_dcolor), debug)
 

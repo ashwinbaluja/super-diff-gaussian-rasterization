@@ -404,6 +404,7 @@ renderCUDA(
 	int W, int H,
 	const float* __restrict__ bg_color,
 	const float2* __restrict__ points_xy_image,
+	const float* __restrict__ shapes,
 	const float4* __restrict__ conic_opacity,
 	const float* __restrict__ colors,
 	const float* __restrict__ final_Ts,
@@ -411,6 +412,7 @@ renderCUDA(
 	const float* __restrict__ dL_dpixels,
 	float3* __restrict__ dL_dmean2D,
 	float4* __restrict__ dL_dconic2D,
+	float* __restrict__ dL_dshape,
 	float* __restrict__ dL_dopacity,
 	float* __restrict__ dL_dcolors)
 {
@@ -434,6 +436,7 @@ renderCUDA(
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float2 collected_xy[BLOCK_SIZE];
 	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
+	__shared__ float collected_shapes[BLOCK_SIZE];
 	__shared__ float collected_colors[C * BLOCK_SIZE];
 
 	// In the forward, we stored the final value for T, the
@@ -473,6 +476,8 @@ renderCUDA(
 			collected_id[block.thread_rank()] = coll_id;
 			collected_xy[block.thread_rank()] = points_xy_image[coll_id];
 			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id];
+			collected_shapes[block.thread_rank()] = shapes[coll_id];
+			
 			for (int i = 0; i < C; i++)
 				collected_colors[i * BLOCK_SIZE + block.thread_rank()] = colors[coll_id * C + i];
 		}
@@ -491,7 +496,9 @@ renderCUDA(
 			const float2 xy = collected_xy[j];
 			const float2 d = { xy.x - pixf.x, xy.y - pixf.y };
 			const float4 con_o = collected_conic_opacity[j];
-			const float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+			const float shape = collected_shapes[j];
+			float dist = (con_o.x * d.x * d.x + con_o.z * d.y * d.y) + 2 * con_o.y * d.x * d.y;
+			const float power = -0.5f * pow(dist, shape);
 			if (power > 0.0f)
 				continue;
 
@@ -541,17 +548,25 @@ renderCUDA(
 			const float dG_ddelx = -gdx * con_o.x - gdy * con_o.y;
 			const float dG_ddely = -gdy * con_o.z - gdx * con_o.y;
 
+			const float dG_dShape = power * log(dist) * exp(power);
+
+			const float dL_dG_dd = dL_dG * shape * pow(dist, shape-1);
+
+
 			// Update gradients w.r.t. 2D mean position of the Gaussian
-			atomicAdd(&dL_dmean2D[global_id].x, dL_dG * dG_ddelx * ddelx_dx);
-			atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely * ddely_dy);
+			atomicAdd(&dL_dmean2D[global_id].x, dL_dG_dd * dG_ddelx * ddelx_dx);
+			atomicAdd(&dL_dmean2D[global_id].y, dL_dG_dd * dG_ddely * ddely_dy);
 
 			// Update gradients w.r.t. 2D covariance (2x2 matrix, symmetric)
-			atomicAdd(&dL_dconic2D[global_id].x, -0.5f * gdx * d.x * dL_dG);
-			atomicAdd(&dL_dconic2D[global_id].y, -0.5f * gdx * d.y * dL_dG);
-			atomicAdd(&dL_dconic2D[global_id].w, -0.5f * gdy * d.y * dL_dG);
+			atomicAdd(&dL_dconic2D[global_id].x, -0.5f * gdx * d.x * dL_dG_dd);
+			atomicAdd(&dL_dconic2D[global_id].y, -0.5f * gdx * d.y * dL_dG_dd);
+			atomicAdd(&dL_dconic2D[global_id].w, -0.5f * gdy * d.y * dL_dG_dd);
 
 			// Update gradients w.r.t. opacity of the Gaussian
 			atomicAdd(&(dL_dopacity[global_id]), G * dL_dalpha);
+
+			atomicAdd(&(dL_dshape[global_id]), dL_dG * dG_dShape);
+
 		}
 	}
 }
@@ -628,6 +643,7 @@ void BACKWARD::render(
 	int W, int H,
 	const float* bg_color,
 	const float2* means2D,
+	const float* shapes,
 	const float4* conic_opacity,
 	const float* colors,
 	const float* final_Ts,
@@ -635,6 +651,7 @@ void BACKWARD::render(
 	const float* dL_dpixels,
 	float3* dL_dmean2D,
 	float4* dL_dconic2D,
+	float* dL_dshape,
 	float* dL_dopacity,
 	float* dL_dcolors)
 {
@@ -644,6 +661,7 @@ void BACKWARD::render(
 		W, H,
 		bg_color,
 		means2D,
+		shapes,
 		conic_opacity,
 		colors,
 		final_Ts,
@@ -651,6 +669,7 @@ void BACKWARD::render(
 		dL_dpixels,
 		dL_dmean2D,
 		dL_dconic2D,
+		dL_dshape,
 		dL_dopacity,
 		dL_dcolors
 		);
