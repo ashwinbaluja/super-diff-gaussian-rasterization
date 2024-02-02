@@ -339,7 +339,7 @@ renderCUDA(
 			float2 d = { xy.x - pixf.x, xy.y - pixf.y };
 			float4 con_o = collected_conic_opacity[j];
 			float shape = collected_shapes[j];
-			float power = -0.5f * pow((con_o.x * d.x * d.x + con_o.z * d.y * d.y) + 2 * con_o.y * d.x * d.y, shape);
+			float power = -0.5f * pow((con_o.x * d.x * d.x + con_o.z * d.y * d.y) + 2 * con_o.y * d.x * d.y, 1.0f);
 			if (power > 0.0f)
 				continue;
 

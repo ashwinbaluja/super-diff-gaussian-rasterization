@@ -498,7 +498,7 @@ renderCUDA(
 			const float4 con_o = collected_conic_opacity[j];
 			const float shape = collected_shapes[j];
 			float dist = (con_o.x * d.x * d.x + con_o.z * d.y * d.y) + 2 * con_o.y * d.x * d.y;
-			const float power = -0.5f * pow(dist, shape);
+			const float power = -0.5f * pow(dist, 1);
 			if (power > 0.0f)
 				continue;
 
@@ -550,7 +550,7 @@ renderCUDA(
 
 			const float dG_dShape = power * log(dist) * exp(power);
 
-			const float dL_dG_dd = dL_dG * shape * pow(dist, shape-1);
+			const float dL_dG_dd = dL_dG;  // shape * pow(dist, shape-1);
 
 
 			// Update gradients w.r.t. 2D mean position of the Gaussian
